@@ -1,85 +1,108 @@
 import streamlit as st
 import pandas as pd
-import joblib
-from sklearn.preprocessing import LabelEncoder
 import numpy as np
+import joblib
+import os
+from sklearn.preprocessing import LabelEncoder
 
-# Load the model
-model = joblib.load("LinearRegression.pkl")
-
-# Load dataset
-data = pd.read_csv("UPI_Fraud.csv")
-
-# Label encoders
-le_city = LabelEncoder()
-le_city.fit(data['Transaction_City'])
-
-le_channel = LabelEncoder()
-le_channel.fit(data['Transaction_Channel'])
-
-# UI
+# =========================
+# Page Config
+# =========================
 st.set_page_config(
     page_title="Sneha's UPI Fraud Detection",
-    page_icon="👀",
+    page_icon="💳",
     layout="wide"
 )
 
-st.title("💳 UPI Fraud Detection")
+st.title("💳 UPI Fraud Detection System")
+st.write("Check whether a UPI transaction is **fraudulent or legitimate**.")
 
+# =========================
+# Safe File Paths
+# =========================
+BASE_DIR = os.path.dirname(__file__)
+MODEL_PATH = os.path.join(BASE_DIR, "LinearRegression.pkl")
+DATA_PATH = os.path.join(BASE_DIR, "UPI_Fraud.csv")
+
+# =========================
+# Load Model & Data
+# =========================
+try:
+    model = joblib.load(MODEL_PATH)
+    data = pd.read_csv(DATA_PATH)
+except Exception as e:
+    st.error(f"❌ Error loading files: {e}")
+    st.stop()
+
+# =========================
+# Label Encoding
+# =========================
+le_city = LabelEncoder()
+le_city.fit(data["Transaction_City"].astype(str))
+
+le_channel = LabelEncoder()
+le_channel.fit(data["Transaction_Channel"].astype(str))
+
+# =========================
+# Input Widgets
+# =========================
 merchant_ID = st.slider(
     "Select Merchant ID",
-    min_value=0,
-    max_value=647,
-    value=640
+    min_value=int(data["Merchant_ID"].min()),
+    max_value=int(data["Merchant_ID"].max()),
+    value=int(data["Merchant_ID"].max())
 )
 
 device_ID = st.slider(
     "Select Device ID",
-    min_value=0,
-    max_value=647,
-    value=630
+    min_value=int(data["Device_ID"].min()),
+    max_value=int(data["Device_ID"].max()),
+    value=int(data["Device_ID"].max())
 )
 
-cities = list(data['Transaction_City'].unique())
+cities = sorted(data["Transaction_City"].astype(str).unique())
 location = st.selectbox(
     "Select Transaction City",
-    options=cities,
-    index=len(cities)-1
+    options=cities
 )
 
-channels = list(data['Transaction_Channel'].unique())
-default_channel_index = 0
-
-for i, c in enumerate(channels):
-    if "online" in str(c).lower() or "upi" in str(c).lower():
-        default_channel_index = i
-        break
-
+channels = sorted(data["Transaction_Channel"].astype(str).unique())
 transaction_channel = st.selectbox(
     "Select Transaction Channel",
-    options=channels,
-    index=default_channel_index
+    options=channels
 )
 
 amount = st.slider(
     "Select Amount",
     min_value=float(data["amount"].min()),
     max_value=float(data["amount"].max()),
-    value=float(data["amount"].max())
+    value=float(data["amount"].max() * 0.8)
 )
 
-if st.button("Predict Fraud?"):
-    encoded_city = le_city.transform([location])[0]
-    encoded_channel = le_channel.transform([transaction_channel])[0]
+# =========================
+# Prediction
+# =========================
+if st.button("🔍 Predict Fraud"):
+    try:
+        encoded_city = le_city.transform([location])[0]
+        encoded_channel = le_channel.transform([transaction_channel])[0]
 
-    input_data = np.array([[merchant_ID, device_ID, encoded_city, encoded_channel, amount]])
+        input_data = np.array(
+            [[merchant_ID, device_ID, encoded_city, encoded_channel, amount]]
+        )
 
-    prediction = model.predict(input_data)[0]
+        prediction = model.predict(input_data)[0]
 
-    if amount > data["amount"].max() * 0.9:
-        prediction = 1
+        # Demo fraud logic for high amount
+        if amount > data["amount"].max() * 0.9:
+            prediction = 1
 
-    if prediction > 0.3:
-        st.error("🚨 Fraudulent Transaction Detected!")
-    else:
-        st.success("✅ Transaction Seems Legitimate")
+        st.subheader("📊 Prediction Result")
+
+        if prediction > 0.3:
+            st.error("🚨 Fraudulent Transaction Detected!")
+        else:
+            st.success("✅ Transaction Seems Legitimate")
+
+    except Exception as e:
+        st.error(f"Prediction failed: {e}")
